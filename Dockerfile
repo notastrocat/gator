@@ -2,37 +2,26 @@ FROM ubuntu:latest
 
 # Install necessary packages
 RUN apt-get update && apt-get install -y \
-    bash \
-    wget \
-    vim \
-    curl
+    bash wget vim curl git ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install Go
-RUN curl -sS https://webi.sh/golang | sh && \
-    . ~/.config/envman/PATH.env && \
-    go version
+# Install Go using webi and force it into the system PATH
+RUN curl -sS https://webi.sh/golang | sh
+ENV PATH="/root/.local/bin:/root/.config/envman/PATH.env:$PATH"
+# Manually add typical Go bin paths to the ENV so Docker sees them
+ENV PATH="/root/go/bin:/usr/local/go/bin:$PATH"
 
 # Install Starship
-RUN curl -sS https://starship.rs/install.sh > get-starship.sh
-RUN chmod +x get-starship.sh 
-RUN sh get-starship.sh -y
-RUN echo 'eval "$(starship init bash)"' >> ~/.bashrc
+RUN curl -sS https://starship.rs/install.sh | sh -s -- -y && \
+    echo 'eval "$(starship init bash)"' >> ~/.bashrc
 
-# Install BootDev CLI
+# Install Tools (Goose, SQLC, BootDev)
 RUN . ~/.config/envman/PATH.env && \
-    go install github.com/bootdotdev/bootdev@latest && \
-    echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
+	go install github.com/bootdotdev/bootdev@latest && \
+    go install github.com/pressly/goose/v3/cmd/goose@latest && \
+    go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 
-# Install PostgreSQL
-RUN apt-get install -y postgresql postgresql-contrib sudo
-
-# Install Goose
-RUN go install github.com/pressly/goose/v3/cmd/goose@latest
-
-# Install SQLC
-RUN go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
-
-# Set the working directory
 WORKDIR /gator
 
 CMD ["/bin/bash"]
+

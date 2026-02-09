@@ -1,0 +1,24 @@
+services:
+  # The Database Layer
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: gator
+      POSTGRES_USER: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./gator-data:/var/lib/postgresql/data
+
+  # Dev Environment (existing Dockerfile)
+  app:
+    build: .
+    volumes:
+      - .:/gator
+    stdin_open: true # Equivalent to -i
+    tty: true        # Equivalent to -t
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=postgres://postgres@db:5432/gator
