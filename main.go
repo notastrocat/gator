@@ -107,14 +107,31 @@ func usersHandler(st *state, cmd command) error {
 }
 
 func aggHandler(st *state, cmd command) error {
-	feedURL := "https://www.wagslane.dev/index.xml"
-
-	_, err := FetchFeed(context.Background(), feedURL)
-	if err != nil {
-		return fmt.Errorf("there was a problem fetching/parsing the feed: %w", err)
+	if len(cmd.args) < 1 {
+		return fmt.Errorf("please provide duration to aggregate over (e.g. 1h, 30m, etc.)")
 	}
 
-	return nil
+	timeBetweenReq, err := time.ParseDuration(cmd.args[0])
+	if err != nil {
+		return fmt.Errorf("invalid duration format: %w", err)
+	}
+
+	fmt.Println("Collecting feeds every", timeBetweenReq)
+
+	ticker := time.NewTicker(timeBetweenReq)
+
+	for ; ; <-ticker.C {
+		scrapeFeeds(st)
+	}
+
+	// feedURL := "https://www.wagslane.dev/index.xml"
+
+	// _, err := FetchFeed(context.Background(), feedURL)
+	// if err != nil {
+	// 	return fmt.Errorf("there was a problem fetching/parsing the feed: %w", err)
+	// }
+
+	// return nil
 }
 
 func addFeedHandler(st *state, cmd command) error {
@@ -235,6 +252,64 @@ func followingHandler(st *state, cmd command) error {
 	return nil
 }
 
+func unfollowHandler(st *state, cmd command) error {
+	if len(cmd.args) < 1 {
+		return fmt.Errorf("feed name is required to unfollow a feed")
+	}
+
+	err := loginHandler(st, command{
+		cmd:  "login",
+		args: []string{st.cfg.CurrentUserName},
+	})
+
+	// Check if user is logged in
+	if st.userId == uuid.Nil {
+		return fmt.Errorf("you must be logged in to unfollow a feed")
+	}
+
+	feed, err := st.DBQueries.GetFeedByURL(context.Background(), cmd.args[0])
+	if err != nil {
+		return fmt.Errorf("there was an error fetching feed by url: %w", err)
+	}
+
+	err = st.DBQueries.DeleteFeedFollow(context.Background(), database.DeleteFeedFollowParams{
+		UserID: st.userId,
+		FeedID: feed.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("there was an error deleting feed follow: %w", err)
+	}
+
+	fmt.Printf("%s is no longer following %s (%s)\n", st.cfg.CurrentUserName, feed.Name, feed.Url)
+
+	return nil
+}
+
+func scrapeFeeds(st *state) {
+	// feedURL := "https://www.wagslane.dev/index.xml"
+	nextFeed, err := st.DBQueries.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		fmt.Printf("Error fetching next feed to scrape: %v\n", err)
+		return
+	}
+
+	err = st.DBQueries.MarkFeedFetched(context.Background(), database.MarkFeedFetchedParams{
+		LastFetchedAt: nextFeed.LastFetchedAt,
+		ID: st.userId,
+	})
+	if err != nil {
+		fmt.Printf("Error marking feed as fetched: %v\n", err)
+		return
+	}
+
+	
+	rssFeed, err := FetchFeed(context.Background(), nextFeed.Url)
+
+	for _, rssItem := range rssFeed.Channel.Item {
+		fmt.Println(rssItem.Title)
+	}
+}
+
 func main() {
 	st := &state{}
 	st.cfg = config.Read()
@@ -256,6 +331,7 @@ func main() {
 	cmds.register("feeds", feedsHandler)
 	cmds.register("follow", followHandler)
 	cmds.register("following", followingHandler)
+	cmds.register("unfollow", unfollowHandler)
 
 	if len(os.Args) < 2 {
 		fmt.Println("No command provided.")
