@@ -2,4 +2,5 @@ todo.md
 *.json
 *.log
 gator-data
+*.bak
 

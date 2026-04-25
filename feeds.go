@@ -11,9 +11,9 @@ import (
 
 type RSSFeed struct {
 	Channel struct {
-		Title string `xml:"title"`
-		Link  string `xml:"link"`
-		Descr string `xml:"description"`
+		Title string    `xml:"title"`
+		Link  string    `xml:"link"`
+		Descr string    `xml:"description"`
 		Item  []RSSItem `xml:"item"`
 	} `xml:"channel"`
 }

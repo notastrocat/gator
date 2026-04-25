@@ -7,13 +7,17 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - ./gator-data:/var/lib/postgresql/data
 
   # Dev Environment (existing Dockerfile)
   app:
-    build: .
+    build:
+        context: .
+        args:
+            UID: ${UID:-1000}
+            GID: ${GID:-1000}
     volumes:
       - .:/gator
     stdin_open: true # Equivalent to -i

@@ -15,12 +15,12 @@ import (
 
 type state struct {
 	DBQueries *database.Queries
-	cfg *config.Config
-	userId uuid.UUID
+	cfg       *config.Config
+	userId    uuid.UUID
 }
 
 type command struct {
-	cmd string
+	cmd  string
 	args []string
 }
 
@@ -64,12 +64,12 @@ func registerHandler(st *state, cmd command) error {
 	}
 
 	user, err := st.DBQueries.CreateUser(context.Background(),
-					database.CreateUserParams{
-						ID: uuid.New(),
-						CreatedAt: time.Now(),
-						UpdatedAt: time.Now(),
-						Name: cmd.args[0],
-					})
+		database.CreateUserParams{
+			ID:        uuid.New(),
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			Name:      cmd.args[0],
+		})
 
 	if err != nil {
 		return fmt.Errorf("there was an error creating user: %w", err)
@@ -123,29 +123,34 @@ func addFeedHandler(st *state, cmd command) error {
 	}
 
 	err := loginHandler(st, command{
-		cmd: "login",
+		cmd:  "login",
 		args: []string{st.cfg.CurrentUserName},
 	})
 
 	// Check if user is logged in
-    if st.userId == uuid.Nil {
-        return fmt.Errorf("you must be logged in to add a feed")
-    }
+	if st.userId == uuid.Nil {
+		return fmt.Errorf("you must be logged in to add a feed")
+	}
 
 	feed, err := st.DBQueries.CreateFeed(context.Background(),
-					database.CreateFeedParams{
-						ID        :uuid.New(),
-						CreatedAt :time.Now(),
-						UpdatedAt :time.Now(),
-						Name      :cmd.args[0],
-						Url       :cmd.args[1],
-						UserID    :st.userId,
-					})
+		database.CreateFeedParams{
+			ID:        uuid.New(),
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			Name:      cmd.args[0],
+			Url:       cmd.args[1],
+			UserID:    st.userId,
+		})
 	if err != nil {
 		return fmt.Errorf("there was an error creating feed: %w", err)
 	}
 
-	fmt.Printf("Created a new feed: %s (%v) [%s]", feed.Name, feed.ID, feed.Url)	
+	fmt.Printf("Created a new feed: %s (%v) [%s]", feed.Name, feed.ID, feed.Url)
+
+	followHandler(st, command{
+		cmd:  "follow",
+		args: []string{feed.Url},
+	})
 
 	return nil
 }
@@ -162,6 +167,69 @@ func feedsHandler(st *state, cmd command) error {
 			return fmt.Errorf("problem fetching username. %w", err)
 		}
 		fmt.Printf("%s (%s)\n%s\n", feed.Name, feed.Url, username)
+	}
+
+	return nil
+}
+
+func followHandler(st *state, cmd command) error {
+	if len(cmd.args) < 1 {
+		return fmt.Errorf("feed name is required to follow a feed")
+	}
+
+	err := loginHandler(st, command{
+		cmd:  "login",
+		args: []string{st.cfg.CurrentUserName},
+	})
+
+	// Check if user is logged in
+	if st.userId == uuid.Nil {
+		return fmt.Errorf("you must be logged in to follow a feed")
+	}
+
+	feed, err := st.DBQueries.GetFeedByURL(context.Background(), cmd.args[0])
+	if err != nil {
+		return fmt.Errorf("there was an error fetching feed by url: %w", err)
+	}
+
+	res, err := st.DBQueries.CreateFeedFollow(context.Background(),
+		database.CreateFeedFollowParams{
+			ID:        uuid.New(),
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			UserID:    st.userId,
+			FeedID:    feed.ID,
+		})
+	if err != nil {
+		return fmt.Errorf("there was an error creating follow: %w", err)
+	}
+
+	fmt.Printf("%s is now following %s (%s)\n", res.UserName, res.FeedName, feed.Url)
+
+	return nil
+}
+
+func followingHandler(st *state, cmd command) error {
+	err := loginHandler(st, command{
+		cmd:  "login",
+		args: []string{st.cfg.CurrentUserName},
+	})
+
+	// Check if user is logged in
+	if st.userId == uuid.Nil {
+		return fmt.Errorf("you must be logged in to see your following feeds")
+	}
+
+	results, err := st.DBQueries.GetFeedFollowsForUser(context.Background(), st.userId)
+	if err != nil {
+		return fmt.Errorf("there was an error fetching feed follows for user: %w", err)
+	}
+
+	if len(results) != 0 {
+		fmt.Printf("%s is following:\n", results[0].UserName)
+		for _, res := range results {
+			fmt.Printf("%s (%s)\n", res.FeedName, res.FeedID)
+		}
 	}
 
 	return nil
@@ -186,6 +254,8 @@ func main() {
 	cmds.register("agg", aggHandler)
 	cmds.register("addfeed", addFeedHandler)
 	cmds.register("feeds", feedsHandler)
+	cmds.register("follow", followHandler)
+	cmds.register("following", followingHandler)
 
 	if len(os.Args) < 2 {
 		fmt.Println("No command provided.")
